@@ -1,6 +1,6 @@
 #!/usr/bin/env python
-# pygame + PyOpenGL version of Nehe's OpenGL lesson01
-# Paul Furber 2001 - m@verick.co.za
+# Written by Paul Brook and ???
+# Released under the GNU GPL v3.
 
 from OpenGL.GL import *
 from OpenGL.GLU import *
@@ -29,21 +29,39 @@ def init():
     glEnableClientState(GL_VERTEX_ARRAY)
     glEnable(GL_CULL_FACE)
 
-
-class Point:
+class Vector(object):
     def __init__(self, x, y, z):
 	self.x = x
 	self.y = y
 	self.z = z
+    def __sub__(self, val):
+	return Vector(self.x - val.x, self.y - val.y, self.z - val.z)
+    def dot_product(self, val):
+	return self.x * val.x + self.y * val.y + self.z * val.z
 
-class Face:
+class Point(Vector):
+    def __init__(self, x, y, z):
+	super(self.__class__, self).__init__(x, y, z)
+
+class Face(object):
     def __init__(self, a, b, c, color):
 	self.a = a
 	self.b = b
 	self.c = c
 	self.color = color
 
-class HackRender:
+class Plane(object):
+    def __init__(self, p, n):
+	self.p = p
+	self.n = n
+    def behind(self, v):
+	return self.n.dot_product(v - self.p) < 0
+    def intersect(self, p, n):
+	p0 = self.p - p
+	v = self.n.dot_product(p0) / self.n.dot_product(n)
+	return Point(p.x + v * n.x, p.y + v * n.y, p.z + v * n.z)
+
+class HackRender(object):
     def update_faces(self, faces):
 	self.vertexbuffer=[]
 	self.colorbuffer=[]
@@ -80,6 +98,47 @@ def create_cube():
 	faces.append(Face(points[a], points[b], points[c], color))
     return faces
 
+def do_split(faces, plane):
+    newfaces = []
+    edges = []
+    for f in faces:
+	ba = plane.behind(f.a)
+	bb = plane.behind(f.b)
+	bc = plane.behind(f.c)
+	if ba == bb and bb == bc:
+	    if not ba:
+		newfaces.append(f)
+	    continue
+	if ba == bb:
+	    test = bc
+	    pa = f.c
+	    pb = f.a
+	    pc = f.b
+	elif bb == bc:
+	    test = ba
+	    pa = f.a
+	    pb = f.b
+	    pc = f.c
+	elif bc == ba:
+	    test = bc
+	    pa = f.b
+	    pb = f.c
+	    pc = f.a
+	else:
+	    raise Exception
+	ib = plane.intersect(pa, pb - pa)
+	ic = plane.intersect(pa, pc - pa)
+	if test:
+	    # drop point
+	    newfaces.append(Face(ib, pb, pc, f.color))
+	    newfaces.append(Face(ib, pc, ic, f.color))
+	    edges.append((ib, ic))
+	else:
+	    # keep point
+	    newfaces.append(Face(pa, ib, ic, f.color))
+	    edges.append((ic, ib))
+    return newfaces
+
 def main():
 
     video_flags = OPENGL|DOUBLEBUF
@@ -93,12 +152,17 @@ def main():
     render = HackRender();
     frames = 0
     ticks = pygame.time.get_ticks()
-    render.update_faces(create_cube())
+    faces = create_cube();
+    render.update_faces(faces)
 
     while 1:
         event = pygame.event.poll()
         if event.type == QUIT or (event.type == KEYDOWN and event.key == K_ESCAPE):
             break
+
+	if event.type == KEYDOWN and event.key == K_SPACE:
+	    faces = do_split(faces, Plane(Vector(0.7,0.7,0.7), Vector(-1,-1,-1)))
+	    render.update_faces(faces)
         
         render.draw(frames, frames / 10.0)
         pygame.display.flip()
