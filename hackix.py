@@ -43,11 +43,21 @@ class Point(Vector):
     def __init__(self, x, y, z):
 	super(self.__class__, self).__init__(x, y, z)
 
+# From point A to point B
+class Edge(object):
+    def __init__(self, a, b):
+	self.a = a
+	self.b = b
+
+# 3 edges and a color  Edges must be in order
 class Face(object):
-    def __init__(self, a, b, c, color):
+    def __init__(self, a, b, c, color, oa, ob, oc):
 	self.a = a
 	self.b = b
 	self.c = c
+	self.own_a = oa
+	self.own_b = ob
+	self.own_c = oc
 	self.color = color
 
 class Plane(object):
@@ -67,7 +77,9 @@ class HackRender(object):
 	self.colorbuffer=[]
 	self.vertexcount = 0
 	for f in faces:
-	    for p in (f.a, f.b, f.c):
+	    print self.vertexcount / 3
+	    for (e, own) in ((f.a, f.own_a), (f.b, f.own_b), (f.c, f.own_c)):
+		p = e.a if own else e.b
 		self.vertexbuffer.append((p.x, p.y, p.z))
 		self.colorbuffer.append(f.color)
 	    self.vertexcount += 3
@@ -84,20 +96,54 @@ class HackRender(object):
 
 def create_cube():
     points=[]
+    n = 0
     for x in (1.0, -1.0):
 	for y in (1.0, -1.0):
 	    for z in (1.0, -1.0):
 		points.append(Point(x, y, z))
+		print n, points[-1]
+		n = n + 1
+    edge = []
+    for (a, b) in [(0,2), (1,2), (1,3), (1,7), (1,5), (0,5), \
+		   (4,5), (4,7), (6,7), (6,3), (6,2), (4,2), \
+		   (0,1), (2,3), (3,7), (7,5), (4,0), (6,4)]:
+	edge.append(Edge(points[a], points[b]))
     faces=[]
     r = (1.0, 0.0, 0.0)
     g = (0.0, 1.0, 0.0)
     b = (0.0, 0.0, 1.0)
-    for (a, b, c, color) in [(0,2,3,r), (0,3,1,r), (4,5,7,r), (4,7,6,r), \
-	     (0,1,5,g), (0,5,4,g), (2,6,7,g), (2,7,3,g), \
-	     (0,4,6,b), (0,6,2,b), (1,3,7,b), (1,7,5,b)] :
-	faces.append(Face(points[a], points[b], points[c], color))
+    p = (1.0, 0.0, 1.0)
+    y = (1.0, 1.0, 0.0)
+    c = (0.0, 1.0, 1.0)
+    w = (1.0, 1.0, 1.0)
+    for (a, b, c, color) in [(0,1,12,r), (1,-13,2,r), (2,-14,3,g), (3,-15,4,g), \
+			     (4,5,-12,b), (5,6,-16,b), (6,15,7,p), (7,8,-17,p), \
+			     (8,14,9,c), (9,13,10,c), (10,11,17,y), (11,0,16,y)]:
+	ea = edge[a]
+	eb = edge[b if b >= 0 else -b]
+	ec = edge[c if c >= 0 else -c]
+	faces.append(Face(ea, eb, ec, color, True, b < 0, c < 0))
     return faces
 
+def make_poly(edges):
+    first = edges.pop()
+    origin = first[0]
+    cur = first[1]
+    print origin
+    while len(edges) > 1:
+	print cur
+	print len(edges)
+	for i in range(0, len(edges)):
+	    print edges[i][0], edges[i][1]
+	    if edges[i][0] == cur:
+		break;
+	print i
+	if edges[i][1] == origin:
+	    break;
+	yield Face(origin, cur, edges[i][1], (1.0, 1.0, 1.0))
+	cur == edges[i][1]
+	del edges[i]
+    
 def do_split(faces, plane):
     newfaces = []
     edges = []
@@ -128,6 +174,7 @@ def do_split(faces, plane):
 	    raise Exception
 	ib = plane.intersect(pa, pb - pa)
 	ic = plane.intersect(pa, pc - pa)
+	print 'Make Edge'
 	if test:
 	    # drop point
 	    newfaces.append(Face(ib, pb, pc, f.color))
@@ -137,6 +184,7 @@ def do_split(faces, plane):
 	    # keep point
 	    newfaces.append(Face(pa, ib, ic, f.color))
 	    edges.append((ic, ib))
+    newfaces += list(make_poly(edges))
     return newfaces
 
 def main():
