@@ -259,7 +259,6 @@ def main():
 
     render = HackRender();
     frames = 0
-    ticks = pygame.time.get_ticks()
     faces = create_cube();
     render.update_faces(faces)
 
@@ -271,11 +270,13 @@ def main():
     dx = 0
     dy = 0
     dz = 0
+    last_tick = pygame.time.get_ticks()
     while 1:
         event = pygame.event.poll()
         if event.type == QUIT or (event.type == KEYDOWN and event.key == K_ESCAPE):
             break
 
+	now = pygame.time.get_ticks()
 	if event.type == KEYDOWN:
 	    if event.key == K_SPACE:
 		faces = do_split(faces, Plane(Vector(0.7,0.7,0.7), Vector(-1,-1,-1)))
@@ -294,16 +295,16 @@ def main():
 	    elif event.key == K_UP or event.key == K_DOWN:
 		dx = 0
 
+	delta = (now - last_tick) / 1000.0
+	last_tick = now
 	if dx != 0:
-	    transform = rotate_x(transform, dx / 10)
+	    transform = rotate_x(transform, dx * delta)
 	if dy != 0:
-	    transform = rotate_y(transform, dy / 10)
+	    transform = rotate_y(transform, dy * delta)
 
         render.draw(transform)
         pygame.display.flip()
         frames = frames+1
-
-    print "fps:  %d" % ((frames*1000)/(pygame.time.get_ticks()-ticks))
 
 
 if __name__ == '__main__': main()
