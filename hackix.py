@@ -48,6 +48,7 @@ class Edge(object):
     def __init__(self, a, b):
 	self.a = a
 	self.b = b
+	self.split_edge = None
 
 # 3 edges and a color  Edges must be in order
 class Face(object):
@@ -59,6 +60,11 @@ class Face(object):
 	self.own_b = ob
 	self.own_c = oc
 	self.color = color
+    def get_points(self):
+	pa = self.a.a if self.own_a else self.a.b
+	pb = self.b.a if self.own_b else self.b.b
+	pc = self.c.a if self.own_c else self.c.b
+	return (pa, pb, pc)
 
 class Plane(object):
     def __init__(self, p, n):
@@ -66,7 +72,8 @@ class Plane(object):
 	self.n = n
     def behind(self, v):
 	return self.n.dot_product(v - self.p) < 0
-    def intersect(self, p, n):
+    def intersect(self, p, p2):
+	n = p2 - p
 	p0 = self.p - p
 	v = self.n.dot_product(p0) / self.n.dot_product(n)
 	return Point(p.x + v * n.x, p.y + v * n.y, p.z + v * n.z)
@@ -77,9 +84,7 @@ class HackRender(object):
 	self.colorbuffer=[]
 	self.vertexcount = 0
 	for f in faces:
-	    print self.vertexcount / 3
-	    for (e, own) in ((f.a, f.own_a), (f.b, f.own_b), (f.c, f.own_c)):
-		p = e.a if own else e.b
+	    for p in f.get_points():
 		self.vertexbuffer.append((p.x, p.y, p.z))
 		self.colorbuffer.append(f.color)
 	    self.vertexcount += 3
@@ -96,13 +101,10 @@ class HackRender(object):
 
 def create_cube():
     points=[]
-    n = 0
     for x in (1.0, -1.0):
 	for y in (1.0, -1.0):
 	    for z in (1.0, -1.0):
 		points.append(Point(x, y, z))
-		print n, points[-1]
-		n = n + 1
     edge = []
     for (a, b) in [(0,2), (1,2), (1,3), (1,7), (1,5), (0,5), \
 		   (4,5), (4,7), (6,7), (6,3), (6,2), (4,2), \
@@ -126,65 +128,87 @@ def create_cube():
     return faces
 
 def make_poly(edges):
-    first = edges.pop()
-    origin = first[0]
-    cur = first[1]
-    print origin
+    prev = edges.pop()
+    # All edges are backwards
+    origin = prev.b
+    cur_point = prev.a
     while len(edges) > 1:
-	print cur
-	print len(edges)
 	for i in range(0, len(edges)):
-	    print edges[i][0], edges[i][1]
-	    if edges[i][0] == cur:
+	    if edges[i].b == cur_point:
 		break;
-	print i
-	if edges[i][1] == origin:
-	    break;
-	yield Face(origin, cur, edges[i][1], (1.0, 1.0, 1.0))
-	cur == edges[i][1]
+	cur_point = edges[i].a
+	new_edge = Edge(cur_point, origin)
+	# FIXME do a new color
+	yield Face(new_edge, prev, edges[i], (1.0, 1.0, 1.0), True, False, False)
+	prev = new_edge
 	del edges[i]
-    
+
 def do_split(faces, plane):
+    class SplitEdge:
+	def __init__(self, point, edge):
+	    self.point = point
+	    self.edge = edge
     newfaces = []
-    edges = []
+    new_poly = []
     for f in faces:
-	ba = plane.behind(f.a)
-	bb = plane.behind(f.b)
-	bc = plane.behind(f.c)
+	p = list(f.get_points())
+	ba = plane.behind(p[0])
+	bb = plane.behind(p[1])
+	bc = plane.behind(p[2])
+	p = [(p[0], f.own_a), (p[1], f.own_b), (p[2], f.own_c)]
 	if ba == bb and bb == bc:
 	    if not ba:
 		newfaces.append(f)
 	    continue
-	if ba == bb:
-	    test = bc
-	    pa = f.c
-	    pb = f.a
-	    pc = f.b
-	elif bb == bc:
-	    test = ba
-	    pa = f.a
-	    pb = f.b
-	    pc = f.c
-	elif bc == ba:
-	    test = bc
-	    pa = f.b
-	    pb = f.c
-	    pc = f.a
+	if (ba == bb): # Point C
+	    p = [p[2], p[0], p[1]]
+	    eb = f.c
+	    ec = f.b
+	    opposite_edge = f.a
+	    drop_point = bc
+	elif bc == ba: # Point B
+	    p = [p[1], p[2], p[0]]
+	    eb = f.b
+	    eb = f.a
+	    opposite_edge = f.c
+	    drop_point = bb
+	elif bb == bc: # Point A
+	    eb = f.a
+	    ec = f.c
+	    opposite_edge = f.b
+	    drop_point = ba
 	else:
 	    raise Exception
-	ib = plane.intersect(pa, pb - pa)
-	ic = plane.intersect(pa, pc - pa)
-	print 'Make Edge'
-	if test:
-	    # drop point
-	    newfaces.append(Face(ib, pb, pc, f.color))
-	    newfaces.append(Face(ib, pc, ic, f.color))
-	    edges.append((ib, ic))
+	new_split_b = ec.split_edge is None
+	if new_split_b:
+	    ib = plane.intersect(p[0][0], p[1][0])
+	    if drop_point:
+		split_edge = Edge(ib, p[1][0])
+	    else:
+		split_edge = Edge(p[0][0], ib)
+	    eb.split_edge = SplitEdge(ib, split_edge)
+	new_split_c = ec.split_edge is None
+	if new_split_c:
+	    ic = plane.intersect(p[0][0], p[2][0])
+	    if drop_point:
+		split_edge = Edge(p[2][0], ic)
+	    else:
+		split_edge = Edge(ic, p[0][0])
+	    ec.split_edge = SplitEdge(ic, split_edge)
+	if drop_point:
+	    mid_edge = Edge(eb.split_edge.point, p[2][0])
+	    nf = Face(eb.split_edge.edge, opposite_edge, mid_edge, f.color, new_split_b, p[1][1], False)
+	    newfaces.append(nf)
+	    new_edge = Edge(ec.split_edge.point, eb.split_edge.point)
+	    nf = Face(mid_edge, ec.split_edge.edge, new_edge, f.color, True, new_split_c, True);
+	    newfaces.append(nf)
 	else:
-	    # keep point
-	    newfaces.append(Face(pa, ib, ic, f.color))
-	    edges.append((ic, ib))
-    newfaces += list(make_poly(edges))
+	    new_edge = Edge(eb.split_edge.point, ec.split_edge.point)
+	    nf = Face(eb.split_edge.edge, new_edge, ec.split_edge.edge, f.color, new_split_b, True, new_split_c)
+	    newfaces.append(nf)
+	new_poly.append(new_edge)
+
+    newfaces += list(make_poly(new_poly))
     return newfaces
 
 def main():
