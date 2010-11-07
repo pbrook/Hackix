@@ -545,7 +545,22 @@ def main():
 	    transform = rotate_x(transform, dx * delta)
 	if dy != 0:
 	    transform = rotate_y(transform, dy * delta)
-	offset_x += move_x * delta
+
+	wii_x = (mov[1]['X'] - 125) / 60.0
+	if wii_x < -0.1:
+	    wii_x += 0.1
+	    if wii_x > 0.0:
+		wii_x = 0.0
+	else:
+	    wii_x -= 0.1
+	    if wii_x < 0.0:
+		wii_x = 0.0
+
+	offset_x += (move_x + wii_x) * delta
+	if offset_x > 1.5:
+	    offset_x = 1.5
+	elif offset_x < -1.5:
+	    offset_x  -1.5
 
 	tmp = matrix_translate(transform, offset_x, 0.0, 0.0)
 	render.draw(mat_from_numpy(tmp), stix.pos)
