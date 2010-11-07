@@ -310,6 +310,12 @@ def rotate_z(matrix, angle):
 		     [0.0, 0.0, 0.0, 1.0]])
     return numpy.dot(a, matrix)
 
+def matrix_translate(matrix, x, y, z):
+    a = numpy.array([[1.0, 0.0, 0.0,   x],
+		     [0.0, 1.0, 0.0,   y],
+		     [0.0, 0.0, 1.0,   z],
+		     [0.0, 0.0, 0.0, 1.0]])
+    return numpy.dot(a, matrix)
 
 class Stix(object):
     def __init__(self, face):
@@ -462,6 +468,8 @@ def main():
     dx = 0
     dy = 0
     dz = 0
+    move_x = 0
+    offset_x = 0
     last_tick = pygame.time.get_ticks()
     while 1:
         event = pygame.event.poll()
@@ -471,7 +479,8 @@ def main():
 	now = pygame.time.get_ticks()
 	if event.type == KEYDOWN:
 	    if event.key == K_SPACE:
-		inv = numpy.linalg.inv(transform)
+		tmp = matrix_translate(transform, offset_x, 0.0, 0.0)
+		inv = numpy.linalg.inv(tmp)
 		origin = matmul3(inv, Vector(0.0, 0.0, 0.0))
 		normal = matmul3(inv, Vector(1.0, 0.0, 0.0))
 		normal = normal - origin;
@@ -489,15 +498,17 @@ def main():
 	    elif event.key == K_DOWN:
 		dx = 1.0
 	    elif event.key == K_d:
-		move_x = 0.5
+		move_x = -1.0
 	    elif event.key == K_a:
-		move_x = -0.5
+		move_x = 1.0
 
 	elif event.type == KEYUP:
 	    if event.key == K_LEFT or event.key == K_RIGHT:
 		dy = 0
 	    elif event.key == K_UP or event.key == K_DOWN:
 		dx = 0
+	    elif event.key == K_d or event.key == K_a:
+		move_x = 0
 
 	delta = (now - last_tick) / 1000.0
 	last_tick = now
@@ -508,8 +519,10 @@ def main():
 	    transform = rotate_x(transform, dx * delta)
 	if dy != 0:
 	    transform = rotate_y(transform, dy * delta)
+	offset_x += move_x * delta
 
-        render.draw(mat_from_numpy(transform), stix.pos)
+	tmp = matrix_translate(transform, offset_x, 0.0, 0.0)
+	render.draw(mat_from_numpy(tmp), stix.pos)
         pygame.display.flip()
         frames = frames+1
 
