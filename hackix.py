@@ -6,6 +6,7 @@ from OpenGL.GL import *
 from OpenGL.GLU import *
 import pygame
 from pygame.locals import *
+import math
 
 
 def resize((width, height)):
@@ -89,12 +90,11 @@ class HackRender(object):
 		self.colorbuffer.append(f.color)
 	    self.vertexcount += 3
 
-    def draw(self, angle1, angle2):
+    def draw(self, transform):
 	glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT)
 	glLoadIdentity()
-	glTranslatef(0.0, 0.0, -10.0)
-	glRotatef(angle2, 1.0, 0.0, 0.0)
-	glRotatef(angle1, 0.0, 1.0, 0.0)
+	glTranslatef(0.0, 0.0, -5.0)
+	glMultMatrixf(transform)
 	glVertexPointerf(self.vertexbuffer)
 	glColorPointerf(self.colorbuffer)
 	glDrawArrays(GL_TRIANGLES, 0, self.vertexcount)
@@ -211,6 +211,42 @@ def do_split(faces, plane):
     newfaces += list(make_poly(new_poly))
     return newfaces
 
+def mul_mat3(matrix, matrix3):
+    out = [0]*16
+    out[0] = matrix3[0] * matrix[0] + matrix3[3] * matrix[1] + matrix3[6] * matrix[2]
+    out[1] = matrix3[1] * matrix[0] + matrix3[4] * matrix[1] + matrix3[7] * matrix[2]
+    out[2] = matrix3[2] * matrix[0] + matrix3[5] * matrix[1] + matrix3[8] * matrix[2]
+    out[3] = matrix[3]
+    out[4] = matrix3[0] * matrix[4] + matrix3[3] * matrix[5] + matrix3[6] * matrix[6]
+    out[5] = matrix3[1] * matrix[4] + matrix3[4] * matrix[5] + matrix3[7] * matrix[6]
+    out[6] = matrix3[2] * matrix[4] + matrix3[5] * matrix[5] + matrix3[8] * matrix[6]
+    out[7] = matrix[7]
+    out[8] = matrix3[0] * matrix[8] + matrix3[3] * matrix[9] + matrix3[6] * matrix[10]
+    out[9] = matrix3[1] * matrix[8] + matrix3[4] * matrix[9] + matrix3[7] * matrix[10]
+    out[10] = matrix3[2] * matrix[8] + matrix3[5] * matrix[9] + matrix3[8] * matrix[10]
+    out[11] = matrix[11]
+    out[12] = matrix[12]
+    out[13] = matrix[13]
+    out[14] = matrix[14]
+    out[15] = matrix[15]
+    return out
+
+def rotate_x(matrix, angle):
+    c = math.cos(angle)
+    s = math.sin(angle)
+    return mul_mat3(matrix, [1.0, 0.0, 0.0, 0.0, c, s, 0.0, -s, c])
+
+def rotate_y(matrix, angle):
+    c = math.cos(angle)
+    s = math.sin(angle)
+    return mul_mat3(matrix, [c, 0.0, -s, 0.0, 1.0, 0.0, s, 0.0, c])
+
+def rotate_z(matrix, angle):
+    c = math.cos(angle)
+    s = math.sin(angle)
+    return mul_mat3(matrix, [c, s, 0.0, -s, c, 0.0, 0.0, 0.0, 1.0])
+
+
 def main():
 
     video_flags = OPENGL|DOUBLEBUF
@@ -227,16 +263,43 @@ def main():
     faces = create_cube();
     render.update_faces(faces)
 
+    transform = [1.0, 0.0, 0.0, 0.0, \
+		 0.0, 1.0, 0.0, 0.0, \
+		 0.0, 0.0, 1.0, 0.0, \
+		 0.0, 0.0, 0.0, 1.0];
+
+    dx = 0
+    dy = 0
+    dz = 0
     while 1:
         event = pygame.event.poll()
         if event.type == QUIT or (event.type == KEYDOWN and event.key == K_ESCAPE):
             break
 
-	if event.type == KEYDOWN and event.key == K_SPACE:
-	    faces = do_split(faces, Plane(Vector(0.7,0.7,0.7), Vector(-1,-1,-1)))
-	    render.update_faces(faces)
-        
-        render.draw(frames, frames / 10.0)
+	if event.type == KEYDOWN:
+	    if event.key == K_SPACE:
+		faces = do_split(faces, Plane(Vector(0.7,0.7,0.7), Vector(-1,-1,-1)))
+		render.update_faces(faces)
+	    elif event.key == K_LEFT:
+		dy = -1.0
+	    elif event.key == K_RIGHT:
+		dy  = 1.0
+	    elif event.key == K_UP:
+		dx = -1.0
+	    elif event.key == K_DOWN:
+		dx = 1.0
+	elif event.type == KEYUP:
+	    if event.key == K_LEFT or event.key == K_RIGHT:
+		dy = 0
+	    elif event.key == K_UP or event.key == K_DOWN:
+		dx = 0
+
+	if dx != 0:
+	    transform = rotate_x(transform, dx / 10)
+	if dy != 0:
+	    transform = rotate_y(transform, dy / 10)
+
+        render.draw(transform)
         pygame.display.flip()
         frames = frames+1
 
