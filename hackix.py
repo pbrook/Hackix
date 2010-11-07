@@ -137,6 +137,7 @@ class HackRender(object):
     def draw(self, transform, stix_pos):
 	glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT)
 	glLoadIdentity()
+	glPushMatrix()
 	glTranslatef(0.0, 0.0, -5.0)
 	glMultMatrixf(transform)
 	glVertexPointerf(self.vertexbuffer)
@@ -153,6 +154,13 @@ class HackRender(object):
 	glDrawElementsui(GL_TRIANGLE_STRIP, [0, 1, 2, 3, 4, 5, 0, 1])
 	glDrawElementsui(GL_TRIANGLES, [1,5,3]);
 	glDrawElementsui(GL_TRIANGLES, [0,2,4]);
+
+	glPopMatrix()
+	lazer_vertex = [(0, 100, -1), (0, -10, -1), (0.01, 10, -10), (0.01, -10, -10)]
+	lazer_color=[(1.0, 0.3, 0.3)]*4
+	glVertexPointerf(lazer_vertex)
+	glColorPointerf(lazer_color)
+	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4)
 
 def create_cube():
     points=[]
@@ -566,7 +574,6 @@ def main():
 	render.draw(mat_from_numpy(tmp), stix.pos)
         pygame.display.flip()
         frames = frames+1
-
 
 
 if __name__ == '__main__': main()
