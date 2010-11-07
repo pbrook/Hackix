@@ -156,11 +156,11 @@ class HackRender(object):
 	glDrawElementsui(GL_TRIANGLES, [0,2,4]);
 
 	glPopMatrix()
-	lazer_vertex = [(0, 100, -1), (0, -10, -1), (0.01, 10, -10), (0.01, -10, -10)]
+	lazer_vertex = [(-0.01, 100, -10), (-0.01, -100, -10), (0, 100, -1), (0, -10, -1), (0.01, 10, -10), (0.01, -10, -10)]
 	lazer_color=[(1.0, 0.3, 0.3)]*4
 	glVertexPointerf(lazer_vertex)
 	glColorPointerf(lazer_color)
-	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4)
+	glDrawArrays(GL_TRIANGLE_STRIP, 0, 6)
 
 def create_cube():
     points=[]
