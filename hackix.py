@@ -6,8 +6,20 @@ from OpenGL.GL import *
 from OpenGL.GLU import *
 import pygame
 from pygame.locals import *
+import random
 import math
+import numpy
+import numpy.linalg
 
+def mat_to_numpy(mat):
+    return numpy.array([mat[0::4], mat[1::4], mat[2::4], mat[3::4]])
+
+def mat_from_numpy(a):
+    res=[]
+    for col in range(0, 4):
+	for row in range(0, 4):
+	    res.append(a[row][col])
+    return res;
 
 def resize((width, height)):
     if height==0:
@@ -15,7 +27,7 @@ def resize((width, height)):
     glViewport(0, 0, width, height)
     glMatrixMode(GL_PROJECTION)
     glLoadIdentity()
-    gluPerspective(45, 1.0*width/height, 0.1, 100.0)
+    gluPerspective(45, 1.0*width/height, 1, 100.0)
     glMatrixMode(GL_MODELVIEW)
     glLoadIdentity()
 
@@ -39,10 +51,26 @@ class Vector(object):
 	return Vector(self.x - val.x, self.y - val.y, self.z - val.z)
     def dot_product(self, val):
 	return self.x * val.x + self.y * val.y + self.z * val.z
+    def magnitude(self):
+	return math.sqrt(self.x * self.x + self.y * self.y + self.z * self.z)
+    def normalize(self):
+	n = 1.0 / self.magnitude()
+	return Vector(self.x * n, self.y * n, self.z * n)
 
 class Point(Vector):
     def __init__(self, x, y, z):
 	super(self.__class__, self).__init__(x, y, z)
+
+def vec_fracpoint(a, b, frac):
+    x = (b.x - a.x) * frac + a.x
+    y = (b.y - a.y) * frac + a.y
+    z = (b.z - a.z) * frac + a.z
+    return Vector(x, y, z)
+
+class SplitEdge:
+    def __init__(self, point, edge):
+	self.point = point
+	self.edge = edge
 
 # From point A to point B
 class Edge(object):
@@ -50,6 +78,18 @@ class Edge(object):
 	self.a = a
 	self.b = b
 	self.split_edge = None
+    def fracpoint(self, frac):
+	return vec_fracpoint(self.a, self.b, frac)
+    def vector(self):
+	return self.b - self.a
+
+class S:
+    def __init__(self):
+	self.index = 0;
+    def bar(self):
+	self.index += 1
+	return self.index
+sfoo = S()
 
 # 3 edges and a color  Edges must be in order
 class Face(object):
@@ -61,11 +101,14 @@ class Face(object):
 	self.own_b = ob
 	self.own_c = oc
 	self.color = color
+	self.index = sfoo.bar()
     def get_points(self):
 	pa = self.a.a if self.own_a else self.a.b
 	pb = self.b.a if self.own_b else self.b.b
 	pc = self.c.a if self.own_c else self.c.b
 	return (pa, pb, pc)
+    def has_edge(self, edge):
+	return edge == self.a or edge == self.b or edge == self.c
 
 class Plane(object):
     def __init__(self, p, n):
@@ -90,7 +133,7 @@ class HackRender(object):
 		self.colorbuffer.append(f.color)
 	    self.vertexcount += 3
 
-    def draw(self, transform):
+    def draw(self, transform, stix_pos):
 	glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT)
 	glLoadIdentity()
 	glTranslatef(0.0, 0.0, -5.0)
@@ -98,6 +141,17 @@ class HackRender(object):
 	glVertexPointerf(self.vertexbuffer)
 	glColorPointerf(self.colorbuffer)
 	glDrawArrays(GL_TRIANGLES, 0, self.vertexcount)
+
+	stix_vertex = []
+	stix_color = []
+	for (x, y, z) in ((1,0,0), (0,1,0), (0,0,1), (-1,0,0), (0,-1,0), (0,0,-1)):
+	    stix_vertex.append((stix_pos.x + x * 0.1, stix_pos.y + y * 0.1, stix_pos.z + z * 0.1))
+	    stix_color.append((0.3, 0.3, 0.3))
+	glVertexPointerf(stix_vertex)
+	glColorPointerf(stix_color)
+	glDrawElementsui(GL_TRIANGLE_STRIP, [0, 1, 2, 3, 4, 5, 0, 1])
+	glDrawElementsui(GL_TRIANGLES, [1,5,3]);
+	glDrawElementsui(GL_TRIANGLES, [0,2,4]);
 
 def create_cube():
     points=[]
@@ -128,10 +182,20 @@ def create_cube():
     return faces
 
 def make_poly(edges):
-    prev = edges.pop()
+    x = 0.0
+    y = 0.0
+    z = 0.0
+    new_color = (random.random(), random.random(), random.random())
+    for e in edges:
+	x += e.a.x
+	y += e.a.y
+	z += e.a.z
+    n = len(edges)
+    origin = Point(x / n, y / n, z / n)
     # All edges are backwards
-    origin = prev.b
-    cur_point = prev.a
+    cur_point = edges[0].b
+    first_edge = Edge(cur_point, origin)
+    prev = first_edge
     while len(edges) > 1:
 	for i in range(0, len(edges)):
 	    if edges[i].b == cur_point:
@@ -139,15 +203,12 @@ def make_poly(edges):
 	cur_point = edges[i].a
 	new_edge = Edge(cur_point, origin)
 	# FIXME do a new color
-	yield Face(new_edge, prev, edges[i], (1.0, 1.0, 1.0), True, False, False)
+	yield Face(new_edge, prev, edges[i], new_color, True, False, False)
 	prev = new_edge
 	del edges[i]
+    yield Face(first_edge, prev, edges[0], new_color, True, False, False)
 
-def do_split(faces, plane):
-    class SplitEdge:
-	def __init__(self, point, edge):
-	    self.point = point
-	    self.edge = edge
+def do_split(faces, plane, stix):
     newfaces = []
     new_poly = []
     for f in faces:
@@ -169,7 +230,7 @@ def do_split(faces, plane):
 	elif bc == ba: # Point B
 	    p = [p[1], p[2], p[0]]
 	    eb = f.b
-	    eb = f.a
+	    ec = f.a
 	    opposite_edge = f.c
 	    drop_point = bb
 	elif bb == bc: # Point A
@@ -179,7 +240,7 @@ def do_split(faces, plane):
 	    drop_point = ba
 	else:
 	    raise Exception
-	new_split_b = ec.split_edge is None
+	new_split_b = eb.split_edge is None
 	if new_split_b:
 	    ib = plane.intersect(p[0][0], p[1][0])
 	    if drop_point:
@@ -197,55 +258,185 @@ def do_split(faces, plane):
 	    ec.split_edge = SplitEdge(ic, split_edge)
 	if drop_point:
 	    mid_edge = Edge(eb.split_edge.point, p[2][0])
-	    nf = Face(eb.split_edge.edge, opposite_edge, mid_edge, f.color, new_split_b, p[1][1], False)
-	    newfaces.append(nf)
+	    nfb = Face(eb.split_edge.edge, opposite_edge, mid_edge, f.color, new_split_b, p[1][1], False)
+	    newfaces.append(nfb)
 	    new_edge = Edge(ec.split_edge.point, eb.split_edge.point)
-	    nf = Face(mid_edge, ec.split_edge.edge, new_edge, f.color, True, new_split_c, True);
-	    newfaces.append(nf)
+	    nfc = Face(mid_edge, ec.split_edge.edge, new_edge, f.color, True, new_split_c, True);
+	    newfaces.append(nfc)
+	    if f == stix.current_face:
+		stix.check_edges(eb, nfb, ec, nfc, new_edge, nfc)
 	else:
 	    new_edge = Edge(eb.split_edge.point, ec.split_edge.point)
 	    nf = Face(eb.split_edge.edge, new_edge, ec.split_edge.edge, f.color, new_split_b, True, new_split_c)
 	    newfaces.append(nf)
+	    if f == stix.current_face:
+		if stix.to_edge == opposite_edge:
+		    # FIXME(again): leaving to_frac is crappy and wrong, but at least it's an answer :-/
+		    stix.to_edge = new_edge;
+		    stix.current_face = nf;
+		else:
+		    stix.check_edges(eb, nf, ec, nf, new_edge, nf)
 	new_poly.append(new_edge)
 
-    newfaces += list(make_poly(new_poly))
-    return newfaces
+    if len(new_poly) > 0:
+	newfaces += list(make_poly(new_poly))
 
-def mul_mat3(matrix, matrix3):
-    out = [0]*16
-    out[0] = matrix3[0] * matrix[0] + matrix3[3] * matrix[1] + matrix3[6] * matrix[2]
-    out[1] = matrix3[1] * matrix[0] + matrix3[4] * matrix[1] + matrix3[7] * matrix[2]
-    out[2] = matrix3[2] * matrix[0] + matrix3[5] * matrix[1] + matrix3[8] * matrix[2]
-    out[3] = matrix[3]
-    out[4] = matrix3[0] * matrix[4] + matrix3[3] * matrix[5] + matrix3[6] * matrix[6]
-    out[5] = matrix3[1] * matrix[4] + matrix3[4] * matrix[5] + matrix3[7] * matrix[6]
-    out[6] = matrix3[2] * matrix[4] + matrix3[5] * matrix[5] + matrix3[8] * matrix[6]
-    out[7] = matrix[7]
-    out[8] = matrix3[0] * matrix[8] + matrix3[3] * matrix[9] + matrix3[6] * matrix[10]
-    out[9] = matrix3[1] * matrix[8] + matrix3[4] * matrix[9] + matrix3[7] * matrix[10]
-    out[10] = matrix3[2] * matrix[8] + matrix3[5] * matrix[9] + matrix3[8] * matrix[10]
-    out[11] = matrix[11]
-    out[12] = matrix[12]
-    out[13] = matrix[13]
-    out[14] = matrix[14]
-    out[15] = matrix[15]
-    return out
+    return newfaces
 
 def rotate_x(matrix, angle):
     c = math.cos(angle)
     s = math.sin(angle)
-    return mul_mat3(matrix, [1.0, 0.0, 0.0, 0.0, c, s, 0.0, -s, c])
+    a = numpy.array([[1.0, 0.0, 0.0, 0.0],
+		     [0.0,   c,   s, 0.0],
+		     [0.0,  -s,   c, 0.0],
+		     [0.0, 0.0, 0.0, 1.0]])
+    return numpy.dot(a, matrix)
 
 def rotate_y(matrix, angle):
     c = math.cos(angle)
     s = math.sin(angle)
-    return mul_mat3(matrix, [c, 0.0, -s, 0.0, 1.0, 0.0, s, 0.0, c])
+    a = numpy.array([[  c, 0.0,  -s, 0.0],
+		     [0.0, 1.0, 0.0, 0.0],
+		     [  s, 0.0,   c, 0.0],
+		     [0.0, 0.0, 0.0, 1.0]])
+    return numpy.dot(a, matrix)
 
 def rotate_z(matrix, angle):
     c = math.cos(angle)
     s = math.sin(angle)
-    return mul_mat3(matrix, [c, s, 0.0, -s, c, 0.0, 0.0, 0.0, 1.0])
+    a = numpy.array([[  c,   s, 0.0, 0.0],
+		     [ -s,   c, 0.0, 0.0],
+		     [0.0, 0.0, 1.0, 0.0],
+		     [0.0, 0.0, 0.0, 1.0]])
+    return numpy.dot(a, matrix)
 
+
+class Stix(object):
+    def __init__(self, face):
+	self.from_edge = face.a
+	self.from_frac = 0.5
+	self.to_edge = face.b
+	self.current_face = face
+	self.to_frac = 0.5
+	self.face_frac = 0.0
+	self.speed = 0.5
+	self.pos = self.from_edge.fracpoint(self.from_frac)
+
+    # Walk over the surface of the object.
+    # This is supposed to walk in a straight line, however there's something
+    # wrong with the calculations so we turn a bit when crossing an edge.
+    def move(self, faces, delta):
+	dist = delta * self.speed;
+	while True:
+	    from_point = self.from_edge.fracpoint(self.from_frac)
+	    to_point = self.to_edge.fracpoint(self.to_frac)
+	    face_vec = to_point - from_point
+	    face_len = face_vec.magnitude()
+	    self.face_frac += dist / face_len
+	    if self.face_frac < 1.0:
+		break;
+	    dist = (self.face_frac - 1.0) * face_len;
+	    self.face_frac = 0;
+	    new_face = None
+	    for f in faces:
+		if f == self.current_face:
+		    continue
+		if f.has_edge(self.to_edge):
+		    new_face = f
+		    break
+	    if new_face is None:
+		raise Exception
+	    edge_vec = self.to_edge.vector().normalize()
+	    stix_dot = edge_vec.dot_product(face_vec.normalize())
+	    (pa, pb, pc) = new_face.get_points()
+	    if new_face.a == self.to_edge:
+		far_point = pc
+		edge_l = new_face.c
+		edge_r = new_face.b
+		ccw = new_face.own_a
+	    elif new_face.b == self.to_edge:
+		far_point = pa
+		edge_l = new_face.a
+		edge_r = new_face.c
+		ccw = new_face.own_b
+	    else: # new_face.c == self.to_edge
+		far_point = pb
+		edge_l = new_face.b
+		edge_r = new_face.a
+		ccw = new_face.own_c
+	    far_dot = edge_vec.dot_product((far_point - to_point).normalize())
+	    self.from_edge = self.to_edge
+	    self.from_frac = self.to_frac
+	    self.current_face = new_face
+	    stix_angle = math.acos(stix_dot)
+	    far_angle = math.acos(far_dot)
+	    if (stix_angle > far_angle):
+		self.to_edge = edge_l if ccw else edge_r
+		self.to_frac = (stix_angle - far_angle) / (2 * math.pi - far_angle)
+		if self.to_edge.a != far_point:
+		    self.to_frac = 1 - self.to_frac
+	    else:
+		self.to_edge = edge_r if ccw else edge_l
+		self.to_frac = stix_angle / far_angle;
+		if self.to_edge.b != far_point:
+		    self.to_frac = 1 - self.to_frac
+	self.pos = vec_fracpoint(from_point, to_point, self.face_frac)
+    def fixup_edge(self, old_edge, new_face, split_edge, split_face):
+	frac = self.to_frac
+	new_edge = old_edge.split_edge.edge
+	mult = old_edge.vector().magnitude() / new_edge.vector().magnitude()
+	if old_edge.a == new_edge.a:
+	    frac *= mult
+	elif old_edge.a == new_edge.b:
+	    frac = 1 - frac * mult
+	elif old_edge.b == new_edge.a:
+	    frac = (1 - frac) * mult
+	elif old_edge.b == new_edge.b:
+	    frac = 1 - ((1 - frac) * mult)
+	else:
+	    raise Exception
+	if (frac >= 0.0) and (frac <= 1.0):
+	    self.to_edge = new_edge
+	    self.to_frac = frac
+	    self.current_face = new_face
+	else:
+	    # FIXME: leaving to_frac is crappy and wrong, but at least it's an answer :-/
+	    self.to_edge = split_edge;
+	    self.current_face = split_face;
+
+    def check_edges(self, edge_b, face_b, edge_c, face_c, split_edge, split_face):
+	if self.to_edge == edge_b:
+	    self.fixup_edge(edge_b, face_b, split_edge, split_face)
+	if self.to_edge == edge_c:
+	    self.fixup_edge(edge_c, face_c, split_edge, split_face)
+
+    # Compensate for edges that have been split
+    def adjust_edges(self):
+	def fixup_edge(old_edge, frac):
+	    new_edge = old_edge.split_edge.edge
+	    mult = old_edge.vector().magnitude() / new_edge.vector().magnitude()
+	    if old_edge.a == new_edge.a:
+		frac *= mult
+	    elif old_edge.a == new_edge.b:
+		frac = 1 - frac * mult
+	    elif old_edge.b == new_edge.a:
+		frac = (1 - frac) * mult
+	    elif old_edge.b == new_edge.b:
+		frac = 1 - ((1 - frac) * mult)
+	    else:
+		raise Exception
+	    return (new_edge, frac)
+
+	if self.from_edge.split_edge is not None:
+	    (self.from_edge, self.from_frac) = fixup_edge(self.from_edge, self.from_frac)
+	if self.to_edge.split_edge is not None:
+	    (self.to_edge, self.to_frac) = fixup_edge(self.to_edge, self.to_frac)
+
+def matmul3(m, v):
+    x = m[0][0] * v.x + m[0][1] * v.y + m[0][2] * v.z + m[0][3]
+    y = m[1][0] * v.x + m[1][1] * v.y + m[1][2] * v.z + m[1][3]
+    z = m[2][0] * v.x + m[2][1] * v.y + m[2][2] * v.z + m[2][3]
+    return Vector(x, y, z)
 
 def main():
 
@@ -260,12 +451,13 @@ def main():
     render = HackRender();
     frames = 0
     faces = create_cube();
+    stix = Stix(faces[11])
     render.update_faces(faces)
 
-    transform = [1.0, 0.0, 0.0, 0.0, \
-		 0.0, 1.0, 0.0, 0.0, \
-		 0.0, 0.0, 1.0, 0.0, \
-		 0.0, 0.0, 0.0, 1.0];
+    transform = numpy.array([[1.0, 0.0, 0.0, 0.0], \
+			     [0.0, 1.0, 0.0, 0.0], \
+			     [0.0, 0.0, 1.0, 0.0], \
+			     [0.0, 0.0, 0.0, 1.0]]);
 
     dx = 0
     dy = 0
@@ -279,7 +471,14 @@ def main():
 	now = pygame.time.get_ticks()
 	if event.type == KEYDOWN:
 	    if event.key == K_SPACE:
-		faces = do_split(faces, Plane(Vector(0.7,0.7,0.7), Vector(-1,-1,-1)))
+		inv = numpy.linalg.inv(transform)
+		origin = matmul3(inv, Vector(0.0, 0.0, 0.0))
+		normal = matmul3(inv, Vector(1.0, 0.0, 0.0))
+		normal = normal - origin;
+		cut = Plane(origin, normal)
+		if cut.behind(stix.pos):
+		    cut = Plane(origin, Vector(0.0, 0.0, 0.0) - normal)
+		faces = do_split(faces, cut, stix)
 		render.update_faces(faces)
 	    elif event.key == K_LEFT:
 		dy = -1.0
@@ -289,6 +488,11 @@ def main():
 		dx = -1.0
 	    elif event.key == K_DOWN:
 		dx = 1.0
+	    elif event.key == K_d:
+		move_x = 0.5
+	    elif event.key == K_a:
+		move_x = -0.5
+
 	elif event.type == KEYUP:
 	    if event.key == K_LEFT or event.key == K_RIGHT:
 		dy = 0
@@ -297,12 +501,15 @@ def main():
 
 	delta = (now - last_tick) / 1000.0
 	last_tick = now
+
+	stix.move(faces, delta)
+
 	if dx != 0:
 	    transform = rotate_x(transform, dx * delta)
 	if dy != 0:
 	    transform = rotate_y(transform, dy * delta)
 
-        render.draw(transform)
+        render.draw(mat_from_numpy(transform), stix.pos)
         pygame.display.flip()
         frames = frames+1
 
