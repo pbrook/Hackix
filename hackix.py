@@ -334,7 +334,7 @@ class Stix(object):
 	self.current_face = face
 	self.to_frac = 0.5
 	self.face_frac = 0.0
-	self.speed = 4
+	self.speed = 3
 	self.pos = self.from_edge.fracpoint(self.from_frac)
 
     # Walk over the surface of the object.
