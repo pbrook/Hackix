@@ -10,6 +10,7 @@ import random
 import math
 import numpy
 import numpy.linalg
+import wii
 
 def mat_to_numpy(mat):
     return numpy.array([mat[0::4], mat[1::4], mat[2::4], mat[3::4]])
@@ -325,7 +326,7 @@ class Stix(object):
 	self.current_face = face
 	self.to_frac = 0.5
 	self.face_frac = 0.0
-	self.speed = 0.5
+	self.speed = 4
 	self.pos = self.from_edge.fracpoint(self.from_frac)
 
     # Walk over the surface of the object.
@@ -447,7 +448,9 @@ def matmul3(m, v):
 def main():
 
     video_flags = OPENGL|DOUBLEBUF
-    
+
+    wiimote = wii.Wiimote()
+
     pygame.init()
     pygame.display.set_mode((640,480), video_flags)
 
@@ -470,7 +473,9 @@ def main():
     dz = 0
     move_x = 0
     offset_x = 0
+    trigger = False
     last_tick = pygame.time.get_ticks()
+    last_trigger = last_tick
     while 1:
         event = pygame.event.poll()
         if event.type == QUIT or (event.type == KEYDOWN and event.key == K_ESCAPE):
@@ -479,16 +484,7 @@ def main():
 	now = pygame.time.get_ticks()
 	if event.type == KEYDOWN:
 	    if event.key == K_SPACE:
-		tmp = matrix_translate(transform, offset_x, 0.0, 0.0)
-		inv = numpy.linalg.inv(tmp)
-		origin = matmul3(inv, Vector(0.0, 0.0, 0.0))
-		normal = matmul3(inv, Vector(1.0, 0.0, 0.0))
-		normal = normal - origin;
-		cut = Plane(origin, normal)
-		if cut.behind(stix.pos):
-		    cut = Plane(origin, Vector(0.0, 0.0, 0.0) - normal)
-		faces = do_split(faces, cut, stix)
-		render.update_faces(faces)
+		trigger = True
 	    elif event.key == K_LEFT:
 		dy = -1.0
 	    elif event.key == K_RIGHT:
@@ -513,6 +509,36 @@ def main():
 	delta = (now - last_tick) / 1000.0
 	last_tick = now
 
+	mov = wiimote.movement()
+
+	angle = -mov[0]['Y']
+	if angle != 0:
+	    transform = rotate_x(transform, angle * delta)
+	angle = mov[0]['Z']
+	if angle != 0:
+	    transform = rotate_y(transform, angle * delta)
+	angle = mov[0]['X']
+	if angle != 0:
+	    transform = rotate_z(transform, angle * delta)
+
+	if mov[2]:
+	    if (now - last_trigger) > 1000:
+		trigger = True
+	    last_trigger = now
+
+	if trigger:
+	    tmp = matrix_translate(transform, offset_x, 0.0, 0.0)
+	    inv = numpy.linalg.inv(tmp)
+	    origin = matmul3(inv, Vector(0.0, 0.0, 0.0))
+	    normal = matmul3(inv, Vector(1.0, 0.0, 0.0))
+	    normal = normal - origin;
+	    cut = Plane(origin, normal)
+	    if cut.behind(stix.pos):
+		cut = Plane(origin, Vector(0.0, 0.0, 0.0) - normal)
+	    faces = do_split(faces, cut, stix)
+	    render.update_faces(faces)
+	    trigger = False
+
 	stix.move(faces, delta)
 
 	if dx != 0:
@@ -525,6 +551,7 @@ def main():
 	render.draw(mat_from_numpy(tmp), stix.pos)
         pygame.display.flip()
         frames = frames+1
+
 
 
 if __name__ == '__main__': main()
